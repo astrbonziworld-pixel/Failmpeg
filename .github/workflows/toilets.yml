@@ -7,7 +7,7 @@ on:
 
 jobs:
   build:
-    runs-on: macos-14 # Uses macOS Sonoma / Xcode runner environment
+    runs-on: macos-15 # Updated from macos-14 to a supported runner version
 
     env:
       IOS_DEPLOYMENT_TARGET: "16.1.1"
@@ -20,30 +20,20 @@ jobs:
         run: |
           brew install nasm pkg-config automake libtool git
 
-      - name: Clone FFmpeg Source Code (Dev / Master or specific tag)
+      - name: Clone FFmpeg Source Code
         run: |
-          # Cloning official FFmpeg git repository (you can switch to a specific commit or branch/tag)
           git clone --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
-          
-          # If you want a specific dev state/snapshot, you can check out a commit hash or branch here:
-          # cd ffmpeg-source && git checkout <COMMIT_HASH> && cd ..
 
       - name: Cross-Compile FFmpeg for iOS 16.1.1 (Device & Simulator)
         run: |
           cd ffmpeg-source
           
-          # Setup toolchain paths for Xcode
           SDKROOT_IOS=$(xcrun -sdk iphoneos --show-sdk-path)
           SDKROOT_SIM=$(xcrun -sdk iphonesimulator --show-sdk-path)
-          
-          # Create an output installation directory
           PREFIX_DIR="$(pwd)/FFmpeg-iOS-Install"
 
           echo "Building for iOS Deployment Target: $IOS_DEPLOYMENT_TARGET"
 
-          # ----------------------------------------------------
-          # Example configuration pass for iOS arm64 (Device)
-          # ----------------------------------------------------
           ./configure \
             --target-os=darwin \
             --arch=arm64 \
@@ -59,13 +49,6 @@ jobs:
 
           make -j$(sysctl -n hw.ncpu)
           make install
-          make clean
-
-          # ----------------------------------------------------
-          # Additional configurations (like x86_64 or arm64 simulator slices) 
-          # can be added here following the same pattern with:
-          # --extra-cflags="-arch x86_64 -mios-simulator-version-min=$IOS_DEPLOYMENT_TARGET -isysroot $SDKROOT_SIM"
-          # ----------------------------------------------------
 
       - name: Archive Built Artifacts
         run: |

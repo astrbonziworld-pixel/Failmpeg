@@ -1,0 +1,79 @@
+name: Build FFmpeg for iOS 16.1.1
+
+on:
+  push:
+    branches: [ main ]
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: macos-14 # Uses macOS Sonoma / Xcode runner environment
+
+    env:
+      IOS_DEPLOYMENT_TARGET: "16.1.1"
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      - name: Install Build Tools
+        run: |
+          brew install nasm pkg-config automake libtool git
+
+      - name: Clone FFmpeg Source Code (Dev / Master or specific tag)
+        run: |
+          # Cloning official FFmpeg git repository (you can switch to a specific commit or branch/tag)
+          git clone --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
+          
+          # If you want a specific dev state/snapshot, you can check out a commit hash or branch here:
+          # cd ffmpeg-source && git checkout <COMMIT_HASH> && cd ..
+
+      - name: Cross-Compile FFmpeg for iOS 16.1.1 (Device & Simulator)
+        run: |
+          cd ffmpeg-source
+          
+          # Setup toolchain paths for Xcode
+          SDKROOT_IOS=$(xcrun -sdk iphoneos --show-sdk-path)
+          SDKROOT_SIM=$(xcrun -sdk iphonesimulator --show-sdk-path)
+          
+          # Create an output installation directory
+          PREFIX_DIR="$(pwd)/FFmpeg-iOS-Install"
+
+          echo "Building for iOS Deployment Target: $IOS_DEPLOYMENT_TARGET"
+
+          # ----------------------------------------------------
+          # Example configuration pass for iOS arm64 (Device)
+          # ----------------------------------------------------
+          ./configure \
+            --target-os=darwin \
+            --arch=arm64 \
+            --enable-cross-compile \
+            --disable-shared \
+            --enable-static \
+            --disable-doc \
+            --disable-ffplay \
+            --disable-ffprobe \
+            --prefix="$PREFIX_DIR/arm64-ios" \
+            --extra-cflags="-arch arm64 -mios-version-min=$IOS_DEPLOYMENT_TARGET -isysroot $SDKROOT_IOS" \
+            --extra-ldflags="-arch arm64 -mios-version-min=$IOS_DEPLOYMENT_TARGET -isysroot $SDKROOT_IOS"
+
+          make -j$(sysctl -n hw.ncpu)
+          make install
+          make clean
+
+          # ----------------------------------------------------
+          # Additional configurations (like x86_64 or arm64 simulator slices) 
+          # can be added here following the same pattern with:
+          # --extra-cflags="-arch x86_64 -mios-simulator-version-min=$IOS_DEPLOYMENT_TARGET -isysroot $SDKROOT_SIM"
+          # ----------------------------------------------------
+
+      - name: Archive Built Artifacts
+        run: |
+          mkdir -p ios-output
+          cp -R ffmpeg-source/FFmpeg-iOS-Install/* ./ios-output/
+
+      - name: Upload iOS Binaries
+        uses: actions/upload-artifact@v4
+        with:
+          name: ffmpeg-ios-16.1.1-binaries
+          path: ios-output/

@@ -19,7 +19,7 @@ jobs:
         run: |
           brew install nasm pkg-config automake libtool git
 
-      - name: Clone And Shitting FFmpeg for iOS 16.1.1
+      - name: meh
         run: |
           git clone --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
           cd ffmpeg-source
@@ -50,12 +50,11 @@ jobs:
 
       - name: Build and Archive App
         run: |
-          # Replace 'YourProjectName' with your actual Xcode project name / scheme
-          xcodebuild -project YourProjectName.xcodeproj \
-                     -scheme YourProjectName \
+          xcodebuild -project Failmpeg.xcodeproj \
+                     -scheme Failmpeg \
                      -sdk iphoneos \
                      -configuration Release \
-                     -archivePath build/YourProjectName.xcarchive \
+                     -archivePath build/Failmpeg.xcarchive \
                      archive \
                      CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOW_SIMULATOR_ONLY=YES
 
@@ -77,7 +76,7 @@ jobs:
           EOF
 
           xcodebuild -exportArchive \
-                     -archivePath build/YourProjectName.xcarchive \
+                     -archivePath build/Failmpeg.xcarchive \
                      -exportPath build/ipa-output \
                      -exportOptionsPlist ExportOptions.plist
 

@@ -1,4 +1,4 @@
-name: Build FFmpeg for iOS 16.1.1
+name: Build FFmpeg and iOS IPA
 
 on:
   push:
@@ -6,9 +6,8 @@ on:
   workflow_dispatch:
 
 jobs:
-  build:
-    runs-on: macos-15 # Updated from macos-14 to a supported runner version
-
+  build-all:
+    runs-on: macos-15
     env:
       IOS_DEPLOYMENT_TARGET: "16.1.1"
 
@@ -20,19 +19,13 @@ jobs:
         run: |
           brew install nasm pkg-config automake libtool git
 
-      - name: Clone FFmpeg Source Code
+      - name: Clone And Shitting FFmpeg for iOS 16.1.1
         run: |
           git clone --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
-
-      - name: Cross-Compile FFmpeg for iOS 16.1.1 (Device & Simulator)
-        run: |
           cd ffmpeg-source
           
           SDKROOT_IOS=$(xcrun -sdk iphoneos --show-sdk-path)
-          SDKROOT_SIM=$(xcrun -sdk iphonesimulator --show-sdk-path)
           PREFIX_DIR="$(pwd)/FFmpeg-iOS-Install"
-
-          echo "Building for iOS Deployment Target: $IOS_DEPLOYMENT_TARGET"
 
           ./configure \
             --target-os=darwin \
@@ -49,14 +42,47 @@ jobs:
 
           make -j$(sysctl -n hw.ncpu)
           make install
+          cd ..
 
-      - name: Archive Built Artifacts
+      - name: Set up Xcode
         run: |
-          mkdir -p ios-output
-          cp -R ffmpeg-source/FFmpeg-iOS-Install/* ./ios-output/
+          sudo xcode-select -s /Applications/Xcode_16.app
 
-      - name: Upload iOS Binaries
+      - name: Build and Archive App
+        run: |
+          # Replace 'YourProjectName' with your actual Xcode project name / scheme
+          xcodebuild -project YourProjectName.xcodeproj \
+                     -scheme YourProjectName \
+                     -sdk iphoneos \
+                     -configuration Release \
+                     -archivePath build/YourProjectName.xcarchive \
+                     archive \
+                     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOW_SIMULATOR_ONLY=YES
+
+      - name: Export to IPA
+        run: |
+          cat <<EOF > ExportOptions.plist
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+              <key>method</key>
+              <string>development</string>
+              <key>compileBitcode</key>
+              <false/>
+              <key>signingStyle</key>
+              <string>automatic</string>
+          </dict>
+          </plist>
+          EOF
+
+          xcodebuild -exportArchive \
+                     -archivePath build/YourProjectName.xcarchive \
+                     -exportPath build/ipa-output \
+                     -exportOptionsPlist ExportOptions.plist
+
+      - name: Upload IPA Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: ffmpeg-ios-16.1.1-binaries
-          path: ios-output/
+          name: ios-app-ipa
+          path: build/ipa-output/*.ipa

@@ -8,7 +8,7 @@ on:
 jobs:
   build:
     name: Build FFmpeg for iOS 16.0.1
-    runs-on: macos-15  # Updated from macos-14 (which is retired)
+    runs-on: macos-15
 
     steps:
       - name: Checkout Repository
@@ -17,6 +17,13 @@ jobs:
       - name: Install Dependencies
         run: |
           brew install yasm nasm pkg-config
+
+      - name: Install gas-preprocessor
+        run: |
+          # Download gas-preprocessor.pl directly from libav repository
+          sudo curl -L https://raw.githubusercontent.com/libav/gas-preprocessor/master/gas-preprocessor.pl -o /usr/local/bin/gas-preprocessor.pl
+          sudo chmod +x /usr/local/bin/gas-preprocessor.pl
+          *Verification:* Run `gas-preprocessor.pl --help` to verify it is globally accessible.
 
       - name: Download and Extract FFmpeg
         env:
@@ -33,13 +40,11 @@ jobs:
           INSTALL_DIR="$(pwd)/../thin_output"
           mkdir -p "$INSTALL_DIR"
           
-          # Target architectures: arm64 for device, x86_64 for simulator
           ARCHS=("arm64" "x86_64")
           
           for ARCH in "${ARCHS[@]}"; do
             echo "Building for architecture: $ARCH"
             
-            # Determine platform type
             if [ "$ARCH" = "x86_64" ]; then
               PLATFORM="iPhoneSimulator"
               DEPLOY_TARGET="16.0.1"
@@ -53,7 +58,6 @@ jobs:
             
             SDKROOT=$(xcrun -sdk $(echo $PLATFORM | tr '[:upper:]' '[:lower:]') --show-sdk-path)
             
-            # Set deployment target flags for the compiler & linker
             export CFLAGS="-arch $ARCH -mios-version-min=$DEPLOY_TARGET -isysroot $SDKROOT"
             export LDFLAGS="-arch $ARCH -mios-version-min=$DEPLOY_TARGET -isysroot $SDKROOT"
             

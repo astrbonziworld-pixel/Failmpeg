@@ -1,87 +1,87 @@
-name: Build FFmpeg and iOS IPA
+name: Build FFmpeg for iOS 16.0.1
 
 on:
   push:
-    branches: [ main ]
+    branches: [ main, master ]
   workflow_dispatch:
 
 jobs:
-  build-all:
-    runs-on: macos-15
-    env:
-      IOS_DEPLOYMENT_TARGET: "16.1.1"
+  build:
+    name: Build FFmpeg for iOS 16.0.1
+    runs-on: macos-15  # Updated from macos-14 (which is retired)
 
     steps:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      - name: Install Build Tools
+      - name: Install Dependencies
         run: |
-          brew install nasm pkg-config automake libtool git
+          brew install yasm nasm pkg-config
 
-      - name: meh
+      - name: Download and Extract FFmpeg
+        env:
+          FFMPEG_VERSION: "6.1"
         run: |
-          git clone --depth 1 https://github.com/FFmpeg/FFmpeg.git ffmpeg-source
-          cd ffmpeg-source
+          curl -O https://ffmpeg.org/releases/ffmpeg-${FFMPEG_VERSION}.tar.xz
+          tar -xf ffmpeg-${FFMPEG_VERSION}.tar.xz
+          mv ffmpeg-${FFMPEG_VERSION} ffmpeg_src
+
+      - name: Build FFmpeg for iOS Device and Simulator
+        run: |
+          cd ffmpeg_src
           
-          SDKROOT_IOS=$(xcrun -sdk iphoneos --show-sdk-path)
-          PREFIX_DIR="$(pwd)/FFmpeg-iOS-Install"
+          INSTALL_DIR="$(pwd)/../thin_output"
+          mkdir -p "$INSTALL_DIR"
+          
+          # Target architectures: arm64 for device, x86_64 for simulator
+          ARCHS=("arm64" "x86_64")
+          
+          for ARCH in "${ARCHS[@]}"; do
+            echo "Building for architecture: $ARCH"
+            
+            # Determine platform type
+            if [ "$ARCH" = "x86_64" ]; then
+              PLATFORM="iPhoneSimulator"
+              DEPLOY_TARGET="16.0.1"
+            else
+              PLATFORM="iPhoneOS"
+              DEPLOY_TARGET="16.0.1"
+            fi
+            
+            mkdir -p "build_$ARCH"
+            cd "build_$ARCH"
+            
+            SDKROOT=$(xcrun -sdk $(echo $PLATFORM | tr '[:upper:]' '[:lower:]') --show-sdk-path)
+            
+            # Set deployment target flags for the compiler & linker
+            export CFLAGS="-arch $ARCH -mios-version-min=$DEPLOY_TARGET -isysroot $SDKROOT"
+            export LDFLAGS="-arch $ARCH -mios-version-min=$DEPLOY_TARGET -isysroot $SDKROOT"
+            
+            ../configure \
+              --target-os=darwin \
+              --arch=$ARCH \
+              --cc="$(xcrun -find clang)" \
+              --as="gas-preprocessor.pl" \
+              --sysroot="$SDKROOT" \
+              --enable-cross-compile \
+              --disable-programs \
+              --disable-doc \
+              --enable-pic \
+              --prefix="$INSTALL_DIR/$ARCH" \
+              || { cat ffbuild/config.log; exit 1; }
+              
+            make -j$(sysctl -n hw.ncpu) install
+            cd ..
+          done
 
-          ./configure \
-            --target-os=darwin \
-            --arch=arm64 \
-            --enable-cross-compile \
-            --disable-shared \
-            --enable-static \
-            --disable-doc \
-            --disable-ffplay \
-            --disable-ffprobe \
-            --prefix="$PREFIX_DIR/arm64-ios" \
-            --extra-cflags="-arch arm64 -mios-version-min=$IOS_DEPLOYMENT_TARGET -isysroot $SDKROOT_IOS" \
-            --extra-ldflags="-arch arm64 -mios-version-min=$IOS_DEPLOYMENT_TARGET -isysroot $SDKROOT_IOS"
-
-          make -j$(sysctl -n hw.ncpu)
-          make install
+      - name: Package Artifacts
+        run: |
+          cd thin_output
+          zip -r ../ffmpeg-ios-16.0.1-libraries.zip .
           cd ..
 
-      - name: Set up Xcode
-        run: |
-          sudo xcode-select -s /Applications/Xcode_16.app
-
-      - name: Build and Archive App
-        run: |
-          xcodebuild -project Failmpeg.xcodeproj \
-                     -scheme Failmpeg \
-                     -sdk iphoneos \
-                     -configuration Release \
-                     -archivePath build/Failmpeg.xcarchive \
-                     archive \
-                     CODE_SIGN_IDENTITY="" CODE_SIGNING_REQUIRED=NO CODE_SIGNING_ALLOW_SIMULATOR_ONLY=YES
-
-      - name: Export to IPA
-        run: |
-          cat <<EOF > ExportOptions.plist
-          <?xml version="1.0" encoding="UTF-8"?>
-          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
-          <plist version="1.0">
-          <dict>
-              <key>method</key>
-              <string>development</string>
-              <key>compileBitcode</key>
-              <false/>
-              <key>signingStyle</key>
-              <string>automatic</string>
-          </dict>
-          </plist>
-          EOF
-
-          xcodebuild -exportArchive \
-                     -archivePath build/Failmpeg.xcarchive \
-                     -exportPath build/ipa-output \
-                     -exportOptionsPlist ExportOptions.plist
-
-      - name: Upload IPA Artifact
+      - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ios-app-ipa
-          path: build/ipa-output/*.ipa
+          name: ffmpeg-ios-16.0.1-artifacts
+          path: ffmpeg-ios-16.0.1-libraries.zip
